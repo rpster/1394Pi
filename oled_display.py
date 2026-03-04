@@ -57,7 +57,7 @@ class OledDisplay:
             self._device.contrast(200)
             self._available = True
             self._font = _load_font(12)
-            self._font_large = _load_font(16)
+            self._font_large = _load_font(14)
             log.info("OLED display detected at 0x%02X", config.OLED_I2C_ADDR)
         except Exception as exc:
             log.info("No OLED display found (0x%02X): %s – headless mode",
@@ -112,14 +112,15 @@ class OledDisplay:
         draw.text((0, 8), mode_name, fill=1, font=self._font_large)
         self._show(img)
 
-    def show_waiting(self, prev_clip_len: str = ""):
+    def show_waiting(self, prev_clip_len: str = "", camera_controlled: bool = True):
         """Waiting for Record screen."""
         if not self._available:
             return
         img, draw = self._new_canvas()
-        draw.text((0, 0), "Waiting for Rec", fill=1, font=self._font)
+        title = "Waiting for Rec" if camera_controlled else "Press to Rec"
+        draw.text((0, 0), title, fill=1, font=self._font)
         if prev_clip_len:
-            draw.text((0, 12), f"Last clip: {prev_clip_len}", fill=1, font=self._font)
+            draw.text((0, 12), f"Last: {prev_clip_len}", fill=1, font=self._font)
         self._show(img)
 
     def show_recording(self, runtime_str: str):
@@ -137,7 +138,7 @@ class OledDisplay:
         if not self._available:
             return
         img, draw = self._new_canvas()
-        draw.text((0, 8), "Press button to Rec", fill=1, font=self._font)
+        draw.text((0, 8), "Press  to Rec", fill=1, font=self._font)
         self._show(img)
 
     def show_format_prompt(self):

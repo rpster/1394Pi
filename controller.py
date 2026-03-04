@@ -353,7 +353,7 @@ class FirewireController:
                 self._state = State.CAM_ON_WAITING
             else:
                 self.ucb.set_led(config.LED_OFF)
-                self.oled.show_waiting(self._prev_clip_str)
+                self.oled.show_waiting(self._prev_clip_str, camera_controlled=False)
                 self._state = State.CAM_OFF_READY
 
     # --- Format mode ---
