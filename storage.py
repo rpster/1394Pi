@@ -83,12 +83,17 @@ def mount_storage(info: dict) -> bool:
 
     os.makedirs(mp, exist_ok=True)
 
-    # Check if already mounted
+    # Check if the correct partition is already mounted here
     result = _run(["findmnt", "-rn", "-o", "SOURCE", mp])
-    if result.returncode == 0 and result.stdout.strip():
-        log.info("Already mounted: %s on %s", result.stdout.strip(), mp)
+    mounted_source = result.stdout.strip() if result.returncode == 0 else ""
+
+    if mounted_source == part:
+        log.info("Already mounted: %s on %s", part, mp)
     else:
-        # Try mount
+        if mounted_source:
+            # findmnt found a different device (e.g. parent filesystem) – mount over it
+            log.info("Mount point %s has %s (expected %s), mounting correct device",
+                     mp, mounted_source, part)
         result = _run(["mount", part, mp])
         if result.returncode != 0:
             log.error("Failed to mount %s: %s", part, result.stderr)
@@ -159,6 +164,26 @@ def format_storage(info: dict) -> bool:
     # 4. Update partition reference and remount
     info["partition"] = part
     return mount_storage(info)
+
+
+def is_storage_present(info: dict) -> bool:
+    """
+    Check whether the external drive is still physically present and mounted.
+    Returns False if the partition device node has disappeared or the mount
+    point is no longer active.
+    """
+    partition = info.get("partition")
+    mount_point = info.get("mount_point")
+
+    if not partition or not os.path.exists(partition):
+        log.warning("Storage device %s no longer exists", partition)
+        return False
+
+    if not mount_point or not os.path.ismount(mount_point):
+        log.warning("Mount point %s is no longer mounted", mount_point)
+        return False
+
+    return True
 
 
 def get_free_space_mb(info: dict) -> int:

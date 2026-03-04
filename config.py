@@ -22,6 +22,7 @@ LED_ON = 0x01
 LED_PULSE = 0x02
 LED_BLINK = 0x03
 LED_DOUBLE_PULSE = 0x04
+LED_FAST_BLINK = 0x05
 
 # OLED display (SSD1306 128x32)
 OLED_I2C_ADDR = 0x3C
@@ -52,9 +53,10 @@ FIREWIRE_DEVICE = "/dev/fw1"
 # Timing (seconds)
 # ---------------------------------------------------------------------------
 POLL_INTERVAL = 0.05          # 50 ms main loop tick
-FORMAT_HOLD_TRIGGER = 5.0     # Hold to enter format confirmation
-FORMAT_CONFIRM_HOLD = 10.0    # Total hold time to execute format
+FORMAT_HOLD_TRIGGER = 5.0     # Hold to enter format mode
+FORMAT_CONFIRM_HOLD = 5.0     # Hold to confirm format
 CAMERA_RETRY_DELAY = 5.0      # Wait before retrying after no camera
+STORAGE_CHECK_INTERVAL = 2.0  # Seconds between external drive presence checks
 DEBOUNCE_TIME = 0.15          # Button debounce
 SWITCH_DEBOUNCE_TIME = 0.3    # Slide switch debounce
 INPUT_SETTLE_TIME = 1.0       # Ignore button after mode switch (I2C settles)

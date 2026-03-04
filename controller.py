@@ -8,6 +8,7 @@ Runs as a systemd service after boot.
 import logging
 import os
 import signal
+import subprocess
 import sys
 import time
 
@@ -15,7 +16,7 @@ import config
 from hardware import UserControlBoard
 from oled_display import OledDisplay
 from dvgrab_manager import DvgrabManager
-from storage import detect_external_sd, mount_storage, format_storage
+from storage import detect_external_sd, mount_storage, format_storage, is_storage_present
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -44,6 +45,7 @@ class State:
     FORMAT_CONFIRM = "format_confirm"
     FORMATTING = "formatting"
     NO_CAMERA = "no_camera"
+    SAVING = "saving"
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +68,11 @@ class FirewireController:
         # Format-mode tracking
         self._no_camera_time: float | None = None
         self._mode_entered_time: float = 0.0
+        self._last_storage_check: float = 0.0
+
+        # Saving state tracking
+        self._sync_proc: subprocess.Popen | None = None
+        self._saving_clip_str: str = ""
 
         # Signal handlers
         signal.signal(signal.SIGTERM, self._handle_signal)
@@ -187,18 +194,38 @@ class FirewireController:
                 State.FORMATTING: self._tick_formatting,
                 State.NO_STORAGE: self._tick_no_storage,
                 State.NO_CAMERA: self._tick_no_camera,
+                State.SAVING: self._tick_saving,
             }.get(self._state)
 
             if handler:
                 handler(btn)
 
-            # 4. Make sure dvgrab is still running (no camera → retry)
+            # 4. Periodically check external drive is still present
+            now = time.monotonic()
+            if (now - self._last_storage_check) >= config.STORAGE_CHECK_INTERVAL:
+                self._last_storage_check = now
+                if self.storage_info and self._state not in (
+                    State.NO_STORAGE, State.FORMAT_CONFIRM, State.FORMATTING,
+                    State.STARTUP,
+                ):
+                    if not is_storage_present(self.storage_info):
+                        log.warning("External drive removed")
+                        if self.dvgrab:
+                            self.dvgrab.stop()
+                        self.storage_info = None
+                        self.oled.show_no_card()
+                        self.ucb.set_led(config.LED_DOUBLE_PULSE)
+                        self._state = State.NO_STORAGE
+                        self._tick_sleep(tick_start)
+                        continue
+
+            # 5. Make sure dvgrab is still running (no camera → retry)
             fw_device_missing = not os.path.exists(config.FW_DEVICE_PATH)
             if self.dvgrab and (
                 not self.dvgrab.running or self.dvgrab.camera_disconnected or fw_device_missing
             ) and self._state not in (
                 State.FORMAT_CONFIRM, State.FORMATTING, State.NO_STORAGE,
-                State.STARTUP, State.NO_CAMERA,
+                State.STARTUP, State.NO_CAMERA, State.SAVING,
             ):
                 if fw_device_missing:
                     log.warning("FireWire device %s missing – no camera detected", config.FW_DEVICE_PATH)
@@ -243,10 +270,8 @@ class FirewireController:
         if "capture_stopped" in events:
             dur = self.dvgrab.get_last_clip_duration()
             self._prev_clip_str = DvgrabManager.format_duration(dur)
-            self.ucb.set_led(config.LED_PULSE)
-            self.oled.show_waiting(self._prev_clip_str)
-            self._state = State.CAM_ON_WAITING
             log.info("Recording stopped (camera-controlled) duration=%s", self._prev_clip_str)
+            self._enter_saving()
             return
 
         # Update runtime display
@@ -280,33 +305,62 @@ class FirewireController:
             dur = self.dvgrab.get_recording_runtime()
             self.dvgrab.is_recording = False
             self._prev_clip_str = DvgrabManager.format_duration(dur)
-            self.ucb.set_led(config.LED_OFF)
-            self.oled.show_waiting(self._prev_clip_str)
-            self._state = State.CAM_OFF_READY
             log.info("Recording stopped (manual) duration=%s", self._prev_clip_str)
+            self._enter_saving()
             return
 
         # Update runtime display
         rt = self.dvgrab.get_recording_runtime()
         self.oled.show_recording(DvgrabManager.format_duration(rt))
 
+    # --- Saving (sync flush) ---
+    def _enter_saving(self):
+        """Enter the SAVING state: flush writes to external drive."""
+        log.info("Syncing data to external drive")
+        self._saving_clip_str = self._prev_clip_str
+        self.ucb.set_led(config.LED_FAST_BLINK)
+        self.oled.show_saving(self._saving_clip_str)
+        mount = self.storage_info["mount_point"] if self.storage_info else "/"
+        self._sync_proc = subprocess.Popen(
+            ["sync", "-f", mount],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        self._state = State.SAVING
+
+    def _tick_saving(self, btn: dict):
+        if self._sync_proc and self._sync_proc.poll() is not None:
+            log.info("Sync complete")
+            self._sync_proc = None
+            if self._camera_controlled:
+                self.ucb.set_led(config.LED_PULSE)
+                self.oled.show_waiting(self._prev_clip_str)
+                self._state = State.CAM_ON_WAITING
+            else:
+                self.ucb.set_led(config.LED_OFF)
+                self.oled.show_waiting(self._prev_clip_str)
+                self._state = State.CAM_OFF_READY
+
     # --- Format mode ---
     def _enter_format_mode(self):
         log.info("Entering format confirmation mode")
         self._state = State.FORMAT_CONFIRM
+        self._format_hold_start = time.monotonic()
         self.ucb.set_led(config.LED_BLINK)
         self.oled.show_format_prompt()
 
     def _tick_format_confirm(self, btn: dict):
         if btn["is_held"]:
-            if btn["hold_duration"] >= config.FORMAT_CONFIRM_HOLD:
+            # User is still holding – check if confirm duration reached
+            hold = time.monotonic() - self._format_hold_start
+            if hold >= config.FORMAT_CONFIRM_HOLD:
                 self._do_format()
                 return
             # Show countdown of remaining time
             remaining = int(config.FORMAT_CONFIRM_HOLD - btn["hold_duration"]) + 1
             self.oled.show_format_countdown(remaining)
         else:
-            # Button released before total hold time reached – cancel
+            # Button released – cancel format
             self._cancel_format()
 
     def _do_format(self):
@@ -344,16 +398,28 @@ class FirewireController:
         pass
 
     def _tick_no_storage(self, btn: dict):
-        pass
+        now = time.monotonic()
+        if (now - self._last_storage_check) < config.STORAGE_CHECK_INTERVAL:
+            return
+        self._last_storage_check = now
 
-    def _tick_no_camera(self, btn: dict):
-        # Format hold is only available when no camera is connected
-        if btn["is_held"] and btn["hold_duration"] >= config.FORMAT_HOLD_TRIGGER:
-            self._enter_format_mode()
+        info = detect_external_sd()
+        if info is None:
             return
 
-        # Don't retry camera while button is held (user may be initiating format)
-        if btn["is_held"]:
+        if not mount_storage(info):
+            log.warning("External drive detected but mount failed – will retry")
+            return
+
+        log.info("External drive mounted: %s", info["save_dir"])
+        self.storage_info = info
+        self.dvgrab = DvgrabManager(info["save_dir"])
+        self._enter_mode(self._camera_controlled)
+
+    def _tick_no_camera(self, btn: dict):
+        # Allow format hold even without a camera
+        if self.storage_info and btn["is_held"] and btn["hold_duration"] >= config.FORMAT_HOLD_TRIGGER:
+            self._enter_format_mode()
             return
 
         elapsed = time.monotonic() - self._no_camera_time
