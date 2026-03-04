@@ -95,9 +95,12 @@ class FirewireController:
             f.write(str(os.getpid()))
 
         # Show splash and wait for FireWire subsystem to initialise
-        self.oled.show_startup()
         log.info("Waiting %ds for FireWire subsystem", config.FW_INIT_DELAY)
-        time.sleep(config.FW_INIT_DELAY)
+        self.oled.reset_scroll()
+        deadline = time.monotonic() + config.FW_INIT_DELAY
+        while self._running and time.monotonic() < deadline:
+            self.oled.show_startup()
+            time.sleep(config.POLL_INTERVAL)
 
         # Detect storage
         self.storage_info = detect_external_sd()
@@ -363,11 +366,13 @@ class FirewireController:
         self._state = State.FORMAT_CONFIRM
         self._format_awaiting_release = True
         self.ucb.set_led(config.LED_BLINK)
+        self.oled.reset_scroll()
         self.oled.show_format_prompt()
 
     def _tick_format_confirm(self, btn: dict):
         if self._format_awaiting_release:
             # Phase 1: wait for user to release the initial hold
+            self.oled.show_format_prompt()  # Update scroll animation
             if btn["released"]:
                 self._format_awaiting_release = False
                 self.ucb.reset_button()
@@ -382,6 +387,8 @@ class FirewireController:
             self.oled.show_format_countdown(remaining)
         elif btn["released"]:
             self._cancel_format()
+        else:
+            self.oled.show_format_prompt()  # Update scroll animation
 
     def _do_format(self):
         log.info("Formatting external microSD")

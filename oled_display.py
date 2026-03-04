@@ -21,10 +21,11 @@ except ImportError:
     log.warning("luma.oled not installed – OLED support disabled")
 
 
-def _load_font(size: int = 10):
+def _load_font(size: int = 10, bold: bool = False):
     """Try to load a small TTF; fall back to default bitmap font."""
     try:
-        return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", size)
+        name = "DejaVuSansMono-Bold.ttf" if bold else "DejaVuSansMono.ttf"
+        return ImageFont.truetype(f"/usr/share/fonts/truetype/dejavu/{name}", size)
     except (OSError, IOError):
         return ImageFont.load_default()
 
@@ -40,6 +41,14 @@ class OledDisplay:
         self._available = False
         self._font = None
         self._font_large = None
+        self._font_xl = None
+        self._font_startup_title = None
+        self._font_startup_sub = None
+        # Scroll state for long lines
+        self._scroll_offset = 0.0
+        self._scroll_text = None
+        self._scroll_pause_until = 0.0
+        self._scroll_last_time = 0.0
         self._detect()
 
     # ------------------------------------------------------------------
@@ -58,6 +67,9 @@ class OledDisplay:
             self._available = True
             self._font = _load_font(12)
             self._font_large = _load_font(14)
+            self._font_xl = _load_font(18)
+            self._font_startup_title = _load_font(16, bold=True)
+            self._font_startup_sub = _load_font(10)
             log.info("OLED display detected at 0x%02X", config.OLED_I2C_ADDR)
         except Exception as exc:
             log.info("No OLED display found (0x%02X): %s – headless mode",
@@ -82,6 +94,49 @@ class OledDisplay:
                 self._device.display(img)
             except Exception:
                 log.debug("OLED write failed – will retry next frame")
+
+    def reset_scroll(self):
+        """Reset horizontal scroll state."""
+        self._scroll_offset = 0.0
+        self._scroll_text = None
+        self._scroll_pause_until = 0.0
+        self._scroll_last_time = 0.0
+
+    def _draw_scrolling_line(self, draw, y, text, font, force_scroll=False):
+        """Draw a line of text that scrolls horizontally if it exceeds display width."""
+        bbox = font.getbbox(text)
+        text_width = bbox[2] - bbox[0]
+
+        if text_width <= config.OLED_WIDTH and not force_scroll:
+            draw.text((0, y), text, fill=1, font=font)
+            return
+
+        gap = 40  # pixel gap between repetitions
+        total_scroll = max(text_width, config.OLED_WIDTH) + gap
+        now = time.monotonic()
+
+        # Reset scroll when text changes
+        if self._scroll_text != text:
+            self._scroll_text = text
+            self._scroll_offset = 0.0
+            self._scroll_pause_until = now + 1.0
+            self._scroll_last_time = now
+
+        # Advance scroll if not pausing
+        if now >= self._scroll_pause_until:
+            elapsed = now - self._scroll_last_time
+            self._scroll_last_time = now
+            self._scroll_offset += elapsed * 40  # 40 pixels per second
+            if self._scroll_offset >= total_scroll:
+                self._scroll_offset = 0.0
+                self._scroll_pause_until = now + 1.0
+        else:
+            self._scroll_last_time = now  # Keep current during pause
+
+        offset = int(self._scroll_offset)
+        draw.text((-offset, y), text, fill=1, font=font)
+        if offset > 0:
+            draw.text((-offset + total_scroll, y), text, fill=1, font=font)
 
     # ------------------------------------------------------------------
     # Public high-level screens
@@ -109,7 +164,7 @@ class OledDisplay:
         if not self._available:
             return
         img, draw = self._new_canvas()
-        draw.text((0, 8), mode_name, fill=1, font=self._font_large)
+        draw.text((0, 5), mode_name, fill=1, font=self._font_xl)
         self._show(img)
 
     def show_waiting(self, prev_clip_len: str = "", camera_controlled: bool = True):
@@ -138,17 +193,16 @@ class OledDisplay:
         if not self._available:
             return
         img, draw = self._new_canvas()
-        draw.text((0, 8), "Press  to Rec", fill=1, font=self._font)
+        draw.text((0, 5), "Press to Rec", fill=1, font=self._font_xl)
         self._show(img)
 
     def show_format_prompt(self):
-        """Format confirmation prompt."""
+        """Format confirmation prompt with scrolling instruction line."""
         if not self._available:
             return
         img, draw = self._new_canvas()
         draw.text((0, 0), "FORMAT microSD?", fill=1, font=self._font)
-        draw.text((0, 11), "Hold 5s = FORMAT", fill=1, font=self._font)
-        draw.text((0, 22), "Press = CANCEL", fill=1, font=self._font)
+        self._draw_scrolling_line(draw, 16, "Hold 5s = FORMAT | Press = CANCEL", self._font)
         self._show(img)
 
     def show_format_countdown(self, seconds: int):
@@ -165,21 +219,21 @@ class OledDisplay:
         if not self._available:
             return
         img, draw = self._new_canvas()
-        draw.text((0, 8), "Formatting...", fill=1, font=self._font_large)
+        draw.text((0, 5), "Formatting...", fill=1, font=self._font_xl)
         self._show(img)
 
     def show_format_done(self):
         if not self._available:
             return
         img, draw = self._new_canvas()
-        draw.text((0, 8), "Format complete!", fill=1, font=self._font_large)
+        draw.text((0, 5), "Format complete!", fill=1, font=self._font_xl)
         self._show(img)
 
     def show_format_cancelled(self):
         if not self._available:
             return
         img, draw = self._new_canvas()
-        draw.text((0, 8), "Format cancelled", fill=1, font=self._font)
+        draw.text((0, 5), "Format cancelled", fill=1, font=self._font_xl)
         self._show(img)
 
     def show_saving(self, clip_duration: str = ""):
@@ -204,20 +258,20 @@ class OledDisplay:
         if not self._available:
             return
         img, draw = self._new_canvas()
-        draw.text((0, 8), "No Card", fill=1, font=self._font_large)
+        draw.text((0, 5), "No Card", fill=1, font=self._font_xl)
         self._show(img)
 
     def show_no_camera(self):
         if not self._available:
             return
         img, draw = self._new_canvas()
-        draw.text((0, 8), "No Camera", fill=1, font=self._font_large)
+        draw.text((0, 5), "No Camera", fill=1, font=self._font_xl)
         self._show(img)
 
     def show_startup(self):
         if not self._available:
             return
         img, draw = self._new_canvas()
-        draw.text((0, 4), "1394Pi", fill=1, font=self._font_large)
-        draw.text((0, 22), "Starting...", fill=1, font=self._font)
+        draw.text((0, 0), "1394Pi", fill=1, font=self._font_startup_title)
+        self._draw_scrolling_line(draw, 21, "Loading...", self._font_startup_sub, force_scroll=True)
         self._show(img)
