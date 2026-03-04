@@ -60,6 +60,7 @@ FORMAT_HOLD_TRIGGER = 5.0     # Hold to enter format mode
 FORMAT_CONFIRM_HOLD = 5.0     # Hold to confirm format
 CAMERA_RETRY_DELAY = 5.0      # Wait before retrying after no camera
 STORAGE_CHECK_INTERVAL = 2.0  # Seconds between external drive presence checks
+CARD_CONFIRM_DELAY = 3.0      # Seconds to show "Card OK!" confirmation
 FW_DEVICE_CHECK_INTERVAL = 1.0  # Seconds between FireWire device presence checks
 DEBOUNCE_TIME = 0.15          # Button debounce
 SWITCH_DEBOUNCE_TIME = 0.3    # Slide switch debounce
