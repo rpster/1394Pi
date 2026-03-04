@@ -121,15 +121,16 @@ class FirewireController:
             self.oled.show_error("Mount failed")
             time.sleep(3)
 
-        # Wait for FireWire device before starting dvgrab
+        # If no FireWire device yet, enter NO_CAMERA state in the main loop
+        # so the button is polled and format mode can be triggered.
         if not os.path.exists(config.FW_DEVICE_PATH):
             log.info("Waiting for FireWire device %s", config.FW_DEVICE_PATH)
             self.oled.show_no_camera()
             self.ucb.set_led(config.LED_DOUBLE_PULSE)
-            while self._running and not os.path.exists(config.FW_DEVICE_PATH):
-                time.sleep(1)
-            if not self._running:
-                return
+            self._state = State.NO_CAMERA
+            self._no_camera_time = time.monotonic()
+            self._camera_controlled = self.ucb.read_switch()
+            return
 
         log.info("FireWire device %s found – waiting %ds for bus to settle",
                  config.FW_DEVICE_PATH, config.FW_BUS_SETTLE_DELAY)
@@ -410,8 +411,7 @@ class FirewireController:
         time.sleep(4)
 
         # Re-init dvgrab with updated save_dir
-        if self.dvgrab:
-            self.dvgrab = DvgrabManager(self.storage_info["save_dir"])
+        self.dvgrab = DvgrabManager(self.storage_info["save_dir"])
         self._enter_mode(self._camera_controlled)
 
     def _cancel_format(self):
@@ -455,16 +455,15 @@ class FirewireController:
 
         elapsed = time.monotonic() - self._no_camera_time
         if elapsed >= config.CAMERA_RETRY_DELAY:
-            if os.path.exists(config.FIREWIRE_DEVICE):
-                log.info("Firewire device detected – retrying camera connection")
-                self._enter_mode(self._camera_controlled)
-            else:
-                self._no_camera_time = time.monotonic()
             if not os.path.exists(config.FW_DEVICE_PATH):
-                # Device still absent – reset timer and keep waiting
                 self._no_camera_time = time.monotonic()
                 return
-            log.info("Retrying camera connection (%s present)", config.FW_DEVICE_PATH)
+            log.info("FireWire device %s found – retrying camera connection",
+                     config.FW_DEVICE_PATH)
+            # First connection since boot: wait for bus to settle, init dvgrab
+            if not self.dvgrab:
+                time.sleep(config.FW_BUS_SETTLE_DELAY)
+                self.dvgrab = DvgrabManager(self.storage_info["save_dir"])
             self._enter_mode(self._camera_controlled)
 
     # ------------------------------------------------------------------
