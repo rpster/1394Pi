@@ -53,7 +53,7 @@ This will:
 - LED off when idle, on when recording
 
 ## Format Disk Feature
-- While not recording, press and hold button for 3 seconds
+- While not recording, press and hold button for 5 seconds and release
 - Confirmation prompt appears on OLED
 - Hold button for 5 seconds to confirm format, or single-press to cancel
 - Formats external microSD as exFAT with label "DVMEDIA"
