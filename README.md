@@ -1,8 +1,7 @@
 # Raspberry Pi 5 FireWire Controller
 
 A lightweight headless system for controlling DV camera capture via FireWire (IEEE 1394)
-using a Raspberry Pi 5 with a PCIe FireWire card, custom I2C user control board, and
-optional I2C OLED display.
+using a Raspberry Pi 5 with a PCIe FireWire card, custom I2C user control board, and I2C OLED display.
 
 ## Hardware Requirements
 
@@ -10,7 +9,7 @@ optional I2C OLED display.
 - PCIe FireWire (IEEE 1394) card
 - External microSD card reader (USB 2.0)
 - Custom I2C user control board (button, LED, slide switch)
-- Optional: I2C 128×32 OLED display (SSD1306)
+- I2C 128×32 OLED display (SSD1306)
 
 ## I2C Address Map
 
