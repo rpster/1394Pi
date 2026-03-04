@@ -94,9 +94,10 @@ class FirewireController:
         with open(config.PID_FILE, "w") as f:
             f.write(str(os.getpid()))
 
-        # Show splash
+        # Show splash and wait for FireWire subsystem to initialise
         self.oled.show_startup()
-        time.sleep(1)
+        log.info("Waiting %ds for FireWire subsystem", config.FW_INIT_DELAY)
+        time.sleep(config.FW_INIT_DELAY)
 
         # Detect storage
         self.storage_info = detect_external_sd()
