@@ -52,6 +52,7 @@ class OledDisplay:
         # Loading dots animation state
         self._loading_dots = 0
         self._loading_last_time = 0.0
+        self._last_frame_bytes: bytes | None = None
         self._detect()
 
     # ------------------------------------------------------------------
@@ -93,8 +94,12 @@ class OledDisplay:
 
     def _show(self, img: "Image.Image"):
         if self._device:
+            frame_bytes = img.tobytes()
+            if frame_bytes == self._last_frame_bytes:
+                return
             try:
                 self._device.display(img)
+                self._last_frame_bytes = frame_bytes
             except Exception:
                 log.debug("OLED write failed – will retry next frame")
 

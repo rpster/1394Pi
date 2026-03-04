@@ -70,6 +70,8 @@ class FirewireController:
         self._format_awaiting_release = False
         self._mode_entered_time: float = 0.0
         self._last_storage_check: float = 0.0
+        self._last_fw_device_check: float = 0.0
+        self._fw_device_present: bool = True
 
         # Saving state tracking
         self._sync_proc: subprocess.Popen | None = None
@@ -78,6 +80,19 @@ class FirewireController:
         # Signal handlers
         signal.signal(signal.SIGTERM, self._handle_signal)
         signal.signal(signal.SIGINT, self._handle_signal)
+
+        # State dispatch table (built once, reused every tick)
+        self._dispatch = {
+            State.CAM_ON_WAITING: self._tick_cam_on_waiting,
+            State.CAM_ON_RECORDING: self._tick_cam_on_recording,
+            State.CAM_OFF_READY: self._tick_cam_off_ready,
+            State.CAM_OFF_RECORDING: self._tick_cam_off_recording,
+            State.FORMAT_CONFIRM: self._tick_format_confirm,
+            State.FORMATTING: self._tick_formatting,
+            State.NO_STORAGE: self._tick_no_storage,
+            State.NO_CAMERA: self._tick_no_camera,
+            State.SAVING: self._tick_saving,
+        }
 
     def _handle_signal(self, signum, frame):
         log.info("Received signal %d – shutting down", signum)
@@ -205,17 +220,7 @@ class FirewireController:
             btn = self.ucb.poll_button()
 
             # 3. Dispatch based on state
-            handler = {
-                State.CAM_ON_WAITING: self._tick_cam_on_waiting,
-                State.CAM_ON_RECORDING: self._tick_cam_on_recording,
-                State.CAM_OFF_READY: self._tick_cam_off_ready,
-                State.CAM_OFF_RECORDING: self._tick_cam_off_recording,
-                State.FORMAT_CONFIRM: self._tick_format_confirm,
-                State.FORMATTING: self._tick_formatting,
-                State.NO_STORAGE: self._tick_no_storage,
-                State.NO_CAMERA: self._tick_no_camera,
-                State.SAVING: self._tick_saving,
-            }.get(self._state)
+            handler = self._dispatch.get(self._state)
 
             if handler:
                 handler(btn)
@@ -240,7 +245,11 @@ class FirewireController:
                         continue
 
             # 5. Make sure dvgrab is still running (no camera → retry)
-            fw_device_missing = not os.path.exists(config.FW_DEVICE_PATH)
+            now_fw = time.monotonic()
+            if (now_fw - self._last_fw_device_check) >= config.FW_DEVICE_CHECK_INTERVAL:
+                self._last_fw_device_check = now_fw
+                self._fw_device_present = os.path.exists(config.FW_DEVICE_PATH)
+            fw_device_missing = not self._fw_device_present
             if self.dvgrab and (
                 not self.dvgrab.running or self.dvgrab.camera_disconnected or fw_device_missing
             ) and self._state not in (
@@ -263,9 +272,19 @@ class FirewireController:
 
     def _tick_sleep(self, tick_start: float):
         elapsed = time.monotonic() - tick_start
-        sleep_time = config.POLL_INTERVAL - elapsed
+        sleep_time = self._current_poll_interval() - elapsed
         if sleep_time > 0:
             time.sleep(sleep_time)
+
+    def _current_poll_interval(self) -> float:
+        """Return the appropriate poll interval for the current state."""
+        if self._state in (
+            State.CAM_ON_RECORDING,
+            State.CAM_OFF_RECORDING,
+            State.FORMAT_CONFIRM,
+        ):
+            return config.POLL_INTERVAL
+        return config.POLL_INTERVAL_IDLE
 
     def _input_settled(self) -> bool:
         """True once enough time has passed after a mode switch for I2C to settle."""

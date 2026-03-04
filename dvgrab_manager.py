@@ -16,6 +16,11 @@ import config
 
 log = logging.getLogger(__name__)
 
+# Pre-compute lowered pattern strings (config values are constants)
+_CAMERA_DISCONNECTED_LOWER = config.CAMERA_DISCONNECTED_PATTERN.lower()
+_CAPTURE_STARTED_LOWER = config.CAPTURE_STARTED_PATTERN.lower()
+_CAPTURE_STOPPED_LOWER = config.CAPTURE_STOPPED_PATTERN.lower()
+
 
 class DvgrabManager:
     """
@@ -200,15 +205,16 @@ class DvgrabManager:
                 continue
             log.info("dvgrab: %s", line)
 
-            if config.CAMERA_DISCONNECTED_PATTERN.lower() in line.lower():
+            line_lower = line.lower()
+            if _CAMERA_DISCONNECTED_LOWER in line_lower:
                 log.warning("Camera disconnected (dvgrab: %s)", line)
                 self._camera_disconnected = True
                 events.append("camera_disconnected")
-            elif config.CAPTURE_STARTED_PATTERN.lower() in line.lower():
+            elif _CAPTURE_STARTED_LOWER in line_lower:
                 events.append("capture_started")
                 self._recording = True
                 self._record_start_time = time.monotonic()
-            elif config.CAPTURE_STOPPED_PATTERN.lower() in line.lower():
+            elif _CAPTURE_STOPPED_LOWER in line_lower:
                 events.append("capture_stopped")
                 self._finalize_clip()
                 self._recording = False
