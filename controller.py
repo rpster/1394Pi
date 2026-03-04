@@ -47,6 +47,7 @@ class State:
     FORMATTING = "formatting"
     NO_CAMERA = "no_camera"
     SAVING = "saving"
+    CARD_DETECTED = "card_detected"
 
 
 # ---------------------------------------------------------------------------
@@ -77,6 +78,7 @@ class FirewireController:
         # Saving state tracking
         self._sync_proc: subprocess.Popen | None = None
         self._saving_clip_str: str = ""
+        self._card_detected_time: float = 0.0
 
         # Signal handlers
         signal.signal(signal.SIGTERM, self._handle_signal)
@@ -91,6 +93,7 @@ class FirewireController:
             State.FORMAT_CONFIRM: self._tick_format_confirm,
             State.FORMATTING: self._tick_formatting,
             State.NO_STORAGE: self._tick_no_storage,
+            State.CARD_DETECTED: self._tick_card_detected,
             State.NO_CAMERA: self._tick_no_camera,
             State.SAVING: self._tick_saving,
         }
@@ -481,7 +484,14 @@ class FirewireController:
         log.info("External drive mounted: %s", info["save_dir"])
         self.storage_info = info
         self.dvgrab = DvgrabManager(info["save_dir"])
-        self._enter_mode(self._camera_controlled)
+        self.oled.show_card_detected()
+        self.ucb.set_led(config.LED_ON)
+        self._card_detected_time = time.monotonic()
+        self._state = State.CARD_DETECTED
+
+    def _tick_card_detected(self, btn: dict):
+        if (time.monotonic() - self._card_detected_time) >= config.CARD_CONFIRM_DELAY:
+            self._enter_mode(self._camera_controlled)
 
     def _tick_no_camera(self, btn: dict):
         # Allow format hold even without a camera

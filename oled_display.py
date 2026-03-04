@@ -290,6 +290,13 @@ class OledDisplay:
         draw.text((0, 5), "No Card", fill=1, font=self._font_xl)
         self._show(img)
 
+    def show_card_detected(self):
+        if not self._available:
+            return
+        img, draw = self._new_canvas()
+        draw.text((0, 5), "Card OK!", fill=1, font=self._font_xl)
+        self._show(img)
+
     def show_no_camera(self):
         if not self._available:
             return
