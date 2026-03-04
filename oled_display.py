@@ -117,7 +117,7 @@ class OledDisplay:
         if not self._available:
             return
         img, draw = self._new_canvas()
-        draw.text((0, 0), "Waiting for Record", fill=1, font=self._font)
+        draw.text((0, 0), "Waiting for Rec", fill=1, font=self._font)
         if prev_clip_len:
             draw.text((0, 12), f"Last clip: {prev_clip_len}", fill=1, font=self._font)
         self._show(img)
@@ -137,7 +137,7 @@ class OledDisplay:
         if not self._available:
             return
         img, draw = self._new_canvas()
-        draw.text((0, 8), "Ready", fill=1, font=self._font_large)
+        draw.text((0, 8), "Press button to Rec", fill=1, font=self._font)
         self._show(img)
 
     def show_format_prompt(self):
