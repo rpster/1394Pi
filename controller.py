@@ -117,6 +117,18 @@ class FirewireController:
             self.oled.show_error("Mount failed")
             time.sleep(3)
 
+        # Wait for FireWire device before starting dvgrab
+        if not os.path.exists(config.FW_DEVICE_PATH):
+            log.info("Waiting for FireWire device %s", config.FW_DEVICE_PATH)
+            self.oled.show_no_camera()
+            self.ucb.set_led(config.LED_DOUBLE_PULSE)
+            while self._running and not os.path.exists(config.FW_DEVICE_PATH):
+                time.sleep(1)
+            if not self._running:
+                return
+
+        log.info("FireWire device %s found", config.FW_DEVICE_PATH)
+
         # Init dvgrab manager
         self.dvgrab = DvgrabManager(self.storage_info["save_dir"])
 
