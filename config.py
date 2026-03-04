@@ -49,6 +49,7 @@ DVGRAB_FILE_PREFIX = "clip-"
 CAPTURE_STARTED_PATTERN = "Capture started"
 CAPTURE_STOPPED_PATTERN = "Capture stopped"
 CAMERA_DISCONNECTED_PATTERN = "send oops"
+FIREWIRE_DEVICE = "/dev/fw1"
 
 # ---------------------------------------------------------------------------
 # Timing (seconds)

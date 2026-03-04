@@ -66,7 +66,6 @@ class FirewireController:
         self.storage_info: dict | None = None
 
         # Format-mode tracking
-        self._format_hold_start: float | None = None
         self._no_camera_time: float | None = None
         self._mode_entered_time: float = 0.0
         self._last_storage_check: float = 0.0
@@ -281,11 +280,6 @@ class FirewireController:
             log.info("Recording started (camera-controlled)")
             return
 
-        # Check for format hold (only when not recording)
-        if self._input_settled() and btn["is_held"] and btn["hold_duration"] >= config.FORMAT_HOLD_TRIGGER:
-            self._enter_format_mode()
-            return
-
     def _tick_cam_on_recording(self, btn: dict):
         events = self.dvgrab.poll_output() if self.dvgrab else []
         if "capture_stopped" in events:
@@ -313,11 +307,6 @@ class FirewireController:
             self.oled.show_recording("00:00:00")
             self._state = State.CAM_OFF_RECORDING
             log.info("Recording started (manual)")
-            return
-
-        # Check for format hold
-        if self._input_settled() and btn["is_held"] and btn["hold_duration"] >= config.FORMAT_HOLD_TRIGGER:
-            self._enter_format_mode()
             return
 
     def _tick_cam_off_recording(self, btn: dict):
@@ -382,6 +371,9 @@ class FirewireController:
             if hold >= config.FORMAT_CONFIRM_HOLD:
                 self._do_format()
                 return
+            # Show countdown of remaining time
+            remaining = int(config.FORMAT_CONFIRM_HOLD - btn["hold_duration"]) + 1
+            self.oled.show_format_countdown(remaining)
         else:
             # Button released – cancel format
             self._cancel_format()
@@ -447,6 +439,11 @@ class FirewireController:
 
         elapsed = time.monotonic() - self._no_camera_time
         if elapsed >= config.CAMERA_RETRY_DELAY:
+            if os.path.exists(config.FIREWIRE_DEVICE):
+                log.info("Firewire device detected – retrying camera connection")
+                self._enter_mode(self._camera_controlled)
+            else:
+                self._no_camera_time = time.monotonic()
             if not os.path.exists(config.FW_DEVICE_PATH):
                 # Device still absent – reset timer and keep waiting
                 self._no_camera_time = time.monotonic()
