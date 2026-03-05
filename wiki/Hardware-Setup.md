@@ -53,7 +53,7 @@ The driver implements reliability features to handle ATtiny85 USI timing constra
 
 The PCIe FireWire card is managed by the kernel's `firewire-core` and `firewire-ohci` modules. When a DV camera is connected, it appears as `/dev/fw1`. The controller checks for this device node to determine camera presence.
 
-Capture is performed by `dvgrab`, a command-line tool for FireWire DV capture, which must be compiled and placed at `/usr/local/bin/dvgrab`.
+Capture is performed by a [custom fork of dvgrab](dvgrab), a command-line FireWire DV capture tool. See the [dvgrab](dvgrab) page for build instructions and fork details.
 
 ## OLED Display
 
