@@ -35,7 +35,20 @@ The installer performs six steps:
 
 ## dvgrab Binary
 
-The controller requires a `dvgrab` binary at `/usr/local/bin/dvgrab`. This is the FireWire DV capture tool and may need to be compiled from source since it is not available in standard Raspberry Pi OS repositories.
+The controller requires dvgrab at `/usr/local/bin/dvgrab`. This project uses a [custom fork](dvgrab) with features needed for camera-controlled capture (notably the `--record-start` flag and memory optimizations for the Pi 5).
+
+Build from source:
+
+```bash
+git clone https://github.com/rpster/dvgrab.git
+cd dvgrab
+./bootstrap
+./configure
+make
+sudo make install
+```
+
+See the [dvgrab](dvgrab) wiki page for full details on the fork and its enhancements.
 
 ## Managing the Service
 
