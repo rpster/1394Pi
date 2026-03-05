@@ -69,7 +69,7 @@ class OledDisplay:
             serial = luma_i2c(port=config.I2C_BUS, address=config.OLED_I2C_ADDR)
             self._device = ssd1306(serial, width=config.OLED_WIDTH,
                                    height=config.OLED_HEIGHT)
-            self._device.contrast(200)
+            self._device.contrast(config.OLED_DEFAULT_BRIGHTNESS)
             self._available = True
             self._font = _load_font(12, bold=True)
             self._font_regular = _load_font(12, bold=False)
@@ -88,6 +88,11 @@ class OledDisplay:
     @property
     def available(self) -> bool:
         return self._available
+
+    def set_contrast(self, value: int):
+        """Set OLED brightness (0–255)."""
+        if self._available:
+            self._device.contrast(value)
 
     # ------------------------------------------------------------------
     # Drawing helpers
