@@ -148,16 +148,18 @@ The rfkill interface for the wireless device was not found.
 If dvgrab keeps dying and the controller cycles between recording mode and "No Camera":
 
 **Check:**
-1. Verify the dvgrab binary works standalone:
+1. Ensure you are using the [rpster/dvgrab fork](https://github.com/rpster/dvgrab), not the upstream version. The `--record-start` flag required for camera-controlled mode only exists in the fork.
+2. Verify the dvgrab binary works standalone:
    ```bash
-   /usr/local/bin/dvgrab --version
+   /usr/local/bin/dvgrab --help | grep record-start
    ```
-2. Test manual capture:
+   If `--record-start` is not listed, you have the wrong binary.
+3. Test manual capture:
    ```bash
    /usr/local/bin/dvgrab -i /tmp/test-
    ```
-3. Check for FireWire permission issues in `dmesg`
-4. Ensure the FireWire libraries are installed:
+4. Check for FireWire permission issues in `dmesg`
+5. Ensure the FireWire libraries are installed:
    ```bash
    dpkg -l | grep -E "libraw1394|libavc1394|libiec61883"
    ```

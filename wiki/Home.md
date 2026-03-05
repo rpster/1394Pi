@@ -1,6 +1,6 @@
 # 1394Pi - Raspberry Pi 5 FireWire Controller
 
-A headless DV camera capture system built on the Raspberry Pi 5. It uses a PCIe FireWire (IEEE 1394) card to interface with DV cameras, a custom ATtiny85-based I2C control board for user input, and an SSD1306 OLED display for real-time feedback. Captured footage is saved to an external USB microSD card formatted as exFAT.
+A headless DV camera capture system built on the Raspberry Pi 5. It uses a PCIe FireWire (IEEE 1394) card to interface with DV cameras, a custom ATtiny85-based I2C control board for user input, and an SSD1306 OLED display for real-time feedback. Captured footage is saved to an external USB microSD card formatted as exFAT. The system uses a [custom fork of dvgrab](https://github.com/rpster/dvgrab) with added support for camera-controlled recording.
 
 ## Features
 

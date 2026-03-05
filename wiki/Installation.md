@@ -33,9 +33,28 @@ The installer performs six steps:
 
 6. **Install systemd service** - Copies the service unit to `/etc/systemd/system/` and enables it.
 
-## dvgrab Binary
+## Building dvgrab
 
-The controller requires a `dvgrab` binary at `/usr/local/bin/dvgrab`. This is the FireWire DV capture tool and may need to be compiled from source since it is not available in standard Raspberry Pi OS repositories.
+The controller requires a custom fork of dvgrab at `/usr/local/bin/dvgrab`. This fork ([rpster/dvgrab](https://github.com/rpster/dvgrab)) adds the `--record-start` flag and other fixes not available in the upstream version or standard repositories.
+
+```bash
+# Clone the fork
+git clone https://github.com/rpster/dvgrab.git
+cd dvgrab
+
+# Build (requires libraw1394-dev, libavc1394-dev, libiec61883-dev already installed by install.sh)
+autoreconf -i
+./configure
+make
+
+# Install to the expected path
+sudo cp dvgrab /usr/local/bin/dvgrab
+```
+
+Verify the installation:
+```bash
+/usr/local/bin/dvgrab --help
+```
 
 ## Managing the Service
 
@@ -74,7 +93,7 @@ The service is configured to restart automatically on failure with a 5-second de
 ## Post-Install
 
 - If I2C was just enabled, a **reboot is required**.
-- Ensure the custom dvgrab binary is at `/usr/local/bin/dvgrab`.
+- Build and install the [dvgrab fork](https://github.com/rpster/dvgrab) to `/usr/local/bin/dvgrab` (see above).
 - Connect the I2C user control board and OLED display before starting the service.
 - Insert a microSD card in the USB reader.
 
