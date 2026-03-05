@@ -87,6 +87,7 @@ class FirewireController:
         self._menu_scroll = 0
         self._menu_awaiting_release = False
         self._menu_items: list[str] = []
+        self._menu_submenu: str | None = None
         self._wifi_rfkill_id: str | None = None
         self._bt_rfkill_id: str | None = None
 
@@ -530,7 +531,13 @@ class FirewireController:
         """Build menu item labels with current WiFi/BT status."""
         wifi_state = "ON" if self._is_wifi_enabled() else "OFF"
         bt_state = "ON" if self._is_bt_enabled() else "OFF"
-        return [f"Wifi: {wifi_state}", f"BT: {bt_state}", "Format", "Exit"]
+        return ["Brightness", f"Wifi: {wifi_state}", f"BT: {bt_state}", "Format", "Exit"]
+
+    def _build_submenu_items(self) -> list[str]:
+        """Build sub-menu item labels for the current sub-menu."""
+        if self._menu_submenu == "brightness":
+            return ["High", "Medium", "Low", "Back"]
+        return []
 
     def _rfkill_soft_blocked(self, rfkill_type: str) -> tuple[bool, str] | None:
         """Check rfkill soft-block state for a given type (e.g. 'wlan', 'bluetooth').
@@ -597,11 +604,17 @@ class FirewireController:
                 self.ucb.reset_button()
             return
 
-        # Select immediately when hold reaches 3s (don't wait for release)
+        # Select immediately when hold reaches threshold (don't wait for release)
         if btn["is_held"] and btn["hold_duration"] >= config.MENU_SELECT_HOLD:
             self._handle_menu_select()
             if self._state == State.MENU:
-                self._menu_awaiting_release = True
+                # If button was released during the action (e.g. sleep for
+                # result display), skip the awaiting-release phase so the
+                # user can immediately re-select the same item.
+                if not self.ucb.read_button_raw():
+                    self.ucb.reset_button()
+                else:
+                    self._menu_awaiting_release = True
             return
 
         if btn["released"]:
@@ -612,8 +625,9 @@ class FirewireController:
                 self._menu_scroll = 0
             elif self._menu_index >= self._menu_scroll + config.MENU_VISIBLE_COUNT:
                 self._menu_scroll = self._menu_index - config.MENU_VISIBLE_COUNT + 1
-            # Re-poll WiFi/BT status on each navigation press
-            self._menu_items = self._build_menu_items()
+            # Re-poll WiFi/BT status on each navigation press (main menu only)
+            if not self._menu_submenu:
+                self._menu_items = self._build_menu_items()
 
         self.oled.show_menu(self._menu_items, self._menu_index, self._menu_scroll)
 
@@ -640,11 +654,20 @@ class FirewireController:
         self._menu_items = self._build_menu_items()
 
     def _handle_menu_select(self):
+        if self._menu_submenu:
+            self._handle_submenu_select()
+            return
         if self._menu_index == 0:
-            self._toggle_rfkill("wlan", "Wifi")
+            # Enter brightness sub-menu
+            self._menu_submenu = "brightness"
+            self._menu_index = 0
+            self._menu_scroll = 0
+            self._menu_items = self._build_submenu_items()
         elif self._menu_index == 1:
-            self._toggle_rfkill("bluetooth", "BT")
+            self._toggle_rfkill("wlan", "Wifi")
         elif self._menu_index == 2:
+            self._toggle_rfkill("bluetooth", "BT")
+        elif self._menu_index == 3:
             # Format – reuse existing flow
             if not self.storage_info:
                 self.oled.show_menu_result("No Card")
@@ -653,10 +676,26 @@ class FirewireController:
                 self._format_from_menu = True
                 self._enter_format_mode()
                 return
-        elif self._menu_index == 3:
+        elif self._menu_index == 4:
             # Exit menu
             self._exit_menu()
             return
+        self.ucb.reset_button()
+
+    def _handle_submenu_select(self):
+        """Handle selection within a sub-menu, then return to main menu."""
+        if self._menu_submenu == "brightness":
+            levels = {0: config.BRIGHTNESS_HIGH, 1: config.BRIGHTNESS_MEDIUM, 2: config.BRIGHTNESS_LOW}
+            if self._menu_index in levels:
+                self.oled.set_contrast(levels[self._menu_index])
+                labels = {0: "High", 1: "Medium", 2: "Low"}
+                self.oled.show_menu_result(f"Bright: {labels[self._menu_index]}")
+                time.sleep(config.MENU_RESULT_DISPLAY_TIME)
+        # Return to main menu (handles both value selection and "Back")
+        self._menu_submenu = None
+        self._menu_index = 0
+        self._menu_scroll = 0
+        self._menu_items = self._build_menu_items()
         self.ucb.reset_button()
 
     def _exit_menu(self):
@@ -669,6 +708,7 @@ class FirewireController:
     def _return_to_menu(self):
         """Return to menu after format completes or is cancelled."""
         self._format_from_menu = False
+        self._menu_submenu = None
         self._menu_awaiting_release = True
         self._menu_items = self._build_menu_items()
         self._state = State.MENU
