@@ -17,7 +17,10 @@ import config
 from hardware import UserControlBoard
 from oled_display import OledDisplay
 from dvgrab_manager import DvgrabManager
-from storage import detect_external_sd, mount_storage, format_storage, is_storage_present
+from storage import (
+    detect_external_sd, mount_storage, format_storage, is_storage_present,
+    get_filesystem_type,
+)
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -43,6 +46,7 @@ class State:
     CAM_ON_RECORDING = "cam_on_recording"
     CAM_OFF_READY = "cam_off_ready"
     CAM_OFF_RECORDING = "cam_off_recording"
+    FORMAT_REQUIRED = "format_required"
     FORMAT_CONFIRM = "format_confirm"
     FORMATTING = "formatting"
     NO_CAMERA = "no_camera"
@@ -107,6 +111,7 @@ class FirewireController:
             State.CAM_ON_RECORDING: self._tick_cam_on_recording,
             State.CAM_OFF_READY: self._tick_cam_off_ready,
             State.CAM_OFF_RECORDING: self._tick_cam_off_recording,
+            State.FORMAT_REQUIRED: self._tick_format_required,
             State.FORMAT_CONFIRM: self._tick_format_confirm,
             State.FORMATTING: self._tick_formatting,
             State.NO_STORAGE: self._tick_no_storage,
@@ -156,6 +161,17 @@ class FirewireController:
                 self.storage_info = detect_external_sd()
             if not self._running:
                 return
+
+        # Check filesystem type before mounting – avoids read-only mount crashes
+        fs_type = get_filesystem_type(self.storage_info["partition"])
+        if fs_type is not None and fs_type != config.FS_TYPE:
+            log.warning("External drive filesystem is %s, not %s",
+                        fs_type, config.FS_TYPE)
+            self._state = State.FORMAT_REQUIRED
+            self.ucb.set_led(config.LED_BLINK)
+            self.oled.show_format_required()
+            self._camera_controlled = self.ucb.read_switch()
+            return
 
         if not mount_storage(self.storage_info):
             log.error("Failed to mount external storage")
@@ -245,7 +261,7 @@ class FirewireController:
             # 1. Check for mode switch change
             current_switch = self.ucb.read_switch(raw=sw_raw)
             if self._prev_switch is not None and current_switch != self._prev_switch:
-                if self._state not in (State.CAM_ON_RECORDING, State.CAM_OFF_RECORDING, State.SAVING, State.FORMAT_CONFIRM, State.FORMATTING, State.MENU):
+                if self._state not in (State.CAM_ON_RECORDING, State.CAM_OFF_RECORDING, State.SAVING, State.FORMAT_REQUIRED, State.FORMAT_CONFIRM, State.FORMATTING, State.MENU):
                     self._enter_mode(current_switch)
                     self._prev_switch = current_switch
                     self._tick_sleep(tick_start)
@@ -268,8 +284,8 @@ class FirewireController:
             if (now - self._last_storage_check) >= config.STORAGE_CHECK_INTERVAL:
                 self._last_storage_check = now
                 if self.storage_info and self._state not in (
-                    State.NO_STORAGE, State.FORMAT_CONFIRM, State.FORMATTING,
-                    State.STARTUP, State.MENU,
+                    State.NO_STORAGE, State.FORMAT_REQUIRED, State.FORMAT_CONFIRM,
+                    State.FORMATTING, State.STARTUP, State.MENU,
                 ):
                     if not is_storage_present(self.storage_info):
                         log.warning("External drive removed")
@@ -291,8 +307,9 @@ class FirewireController:
             if self.dvgrab and (
                 not self.dvgrab.running or self.dvgrab.camera_disconnected or fw_device_missing
             ) and self._state not in (
-                State.FORMAT_CONFIRM, State.FORMATTING, State.NO_STORAGE,
-                State.STARTUP, State.NO_CAMERA, State.SAVING, State.MENU,
+                State.FORMAT_REQUIRED, State.FORMAT_CONFIRM, State.FORMATTING,
+                State.NO_STORAGE, State.STARTUP, State.NO_CAMERA, State.SAVING,
+                State.MENU,
             ):
                 if fw_device_missing:
                     log.warning("FireWire device %s missing – no camera detected", config.FW_DEVICE_PATH)
@@ -319,6 +336,7 @@ class FirewireController:
         if self._state in (
             State.CAM_ON_RECORDING,
             State.CAM_OFF_RECORDING,
+            State.FORMAT_REQUIRED,
             State.FORMAT_CONFIRM,
             State.MENU,
         ):
@@ -475,6 +493,30 @@ class FirewireController:
                 self._state = State.CAM_OFF_READY
 
     # --- Format mode ---
+    # --- Format required (non-exFAT card) ---
+    def _tick_format_required(self, btn: dict):
+        if btn.is_held and btn.hold_duration >= config.FORMAT_REQ_HOLD:
+            self._format_from_menu = False
+            self._enter_format_mode()
+            return
+        if btn.released:
+            self._dismiss_format_required()
+            return
+        self.oled.show_format_required()
+
+    def _dismiss_format_required(self):
+        """Dismiss FORMAT_REQUIRED warning and proceed with the card."""
+        log.info("Format required warning dismissed – proceeding with card")
+        if self.storage_info:
+            if not mount_storage(self.storage_info):
+                log.warning("Could not mount storage – proceeding anyway")
+            if not self.dvgrab:
+                self.dvgrab = DvgrabManager(self.storage_info["save_dir"])
+        self.oled.show_card_detected()
+        self.ucb.set_led(config.LED_ON)
+        self._card_detected_time = time.monotonic()
+        self._state = State.CARD_DETECTED
+
     def _enter_format_mode(self):
         log.info("Entering format confirmation mode")
         self._state = State.FORMAT_CONFIRM
@@ -781,6 +823,17 @@ class FirewireController:
 
         info = detect_external_sd()
         if info is None:
+            return
+
+        # Check filesystem type before mounting – avoids read-only mount crashes
+        fs_type = get_filesystem_type(info["partition"])
+        if fs_type is not None and fs_type != config.FS_TYPE:
+            log.warning("External drive filesystem is %s, not %s",
+                        fs_type, config.FS_TYPE)
+            self.storage_info = info
+            self._state = State.FORMAT_REQUIRED
+            self.ucb.set_led(config.LED_BLINK)
+            self.oled.show_format_required()
             return
 
         if not mount_storage(info):

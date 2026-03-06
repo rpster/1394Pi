@@ -230,6 +230,15 @@ class OledDisplay:
         draw.text((0, 0), "Press to Rec", fill=1, font=self._font)
         self._show(img)
 
+    def show_format_required(self):
+        """Format required warning: black text on white background."""
+        if not self._available:
+            return
+        img, draw = self._new_canvas(inverted=True)
+        draw.text((0, 0), "CARD NOT EXFAT", fill=0, font=self._font)
+        draw.text((0, 16), "HOLD TO FORMAT", fill=0, font=self._font)
+        self._show(img)
+
     def show_format_prompt(self):
         """Format confirmation prompt with alternating instruction line."""
         if not self._available:
