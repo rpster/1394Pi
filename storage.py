@@ -103,7 +103,11 @@ def mount_storage(info: dict) -> bool:
 
     # Ensure captures subdirectory
     save_dir = info["save_dir"]
-    os.makedirs(save_dir, exist_ok=True)
+    try:
+        os.makedirs(save_dir, exist_ok=True)
+    except OSError as exc:
+        log.warning("Could not create save directory %s: %s", save_dir, exc)
+        return False
     log.info("Save directory ready: %s", save_dir)
     return True
 
@@ -193,3 +197,11 @@ def get_free_space_mb(info: dict) -> int:
         return (st.f_bavail * st.f_frsize) // (1024 * 1024)
     except OSError:
         return 0
+
+
+def get_filesystem_type(partition: str) -> str | None:
+    """Return the filesystem type of a partition (e.g. 'exfat', 'ext4'), or None."""
+    result = _run(["blkid", "-o", "value", "-s", "TYPE", partition])
+    if result.returncode == 0 and result.stdout.strip():
+        return result.stdout.strip().lower()
+    return None
