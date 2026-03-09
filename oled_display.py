@@ -25,7 +25,7 @@ def _load_font(size: int = 10, bold: bool = False):
     """Try to load a small TTF; fall back to default bitmap font."""
     try:
         name = "OpenSans-Bold.ttf" if bold else "OpenSans-Medium.ttf"
-        return ImageFont.truetype(f"/usr/share/fonts/truetype/open_sans/{name}", size)
+        return ImageFont.truetype(f"/usr/share/fonts/truetype/open-sans/{name}", size)
     except (OSError, IOError):
         return ImageFont.load_default()
 
