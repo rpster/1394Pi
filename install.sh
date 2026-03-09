@@ -54,10 +54,12 @@ apt-get install -y -qq \
     python3-pil \
     i2c-tools \
     exfatprogs \
+    fonts-open-sans \
     libraw1394-dev \
     libavc1394-dev \
     libiec61883-dev \
     > /dev/null
+
 
 # -------------------------------------------------------
 # 3. Install Python packages
