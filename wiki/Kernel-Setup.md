@@ -17,6 +17,8 @@ Using `=m` (module) is recommended so the modules load on demand via `modprobe`,
 
 ## Building the Kernel
 
+**As of 2026-03-10: Please use the official Pi Lite image from 2025-05-13 (Bookworm 6.12.25) for the best compatibility**
+
 Follow the official Raspberry Pi kernel building guide:
 
 **https://www.raspberrypi.com/documentation/computers/linux_kernel.html**
