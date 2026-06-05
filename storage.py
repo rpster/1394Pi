@@ -16,7 +16,11 @@ log = logging.getLogger(__name__)
 
 def _run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
     log.debug("Running: %s", " ".join(cmd))
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=120, **kwargs)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120, **kwargs)
+    log.debug("%s rc=%d", cmd[0], result.returncode)
+    if result.returncode != 0 and result.stderr.strip():
+        log.debug("%s stderr: %s", cmd[0], result.stderr.strip())
+    return result
 
 
 def _find_usb_block_devices() -> list[str]:
@@ -109,6 +113,8 @@ def mount_storage(info: dict) -> bool:
         log.warning("Could not create save directory %s: %s", save_dir, exc)
         return False
     log.info("Save directory ready: %s", save_dir)
+    free_mb = get_free_space_mb(info)
+    log.info("Free space on %s: %d MB", info["mount_point"], free_mb)
     return True
 
 
@@ -195,7 +201,8 @@ def get_free_space_mb(info: dict) -> int:
     try:
         st = os.statvfs(info["mount_point"])
         return (st.f_bavail * st.f_frsize) // (1024 * 1024)
-    except OSError:
+    except OSError as exc:
+        log.warning("statvfs failed for %s: %s", info.get("mount_point"), exc)
         return 0
 
 

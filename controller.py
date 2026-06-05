@@ -19,7 +19,7 @@ from oled_display import OledDisplay
 from dvgrab_manager import DvgrabManager
 from storage import (
     detect_external_sd, mount_storage, format_storage, is_storage_present,
-    get_filesystem_type,
+    get_filesystem_type, get_free_space_mb,
 )
 
 # ---------------------------------------------------------------------------
@@ -84,6 +84,7 @@ class FirewireController:
         # Saving state tracking
         self._sync_proc: subprocess.Popen | None = None
         self._saving_clip_str: str = ""
+        self._sync_start_time: float = 0.0
         self._card_detected_time: float = 0.0
 
         # Menu tracking
@@ -456,24 +457,40 @@ class FirewireController:
                 pass
             # Also sync the directory so the new entry is persisted
             targets.append(save_dir)
+        free_mb = get_free_space_mb(self.storage_info) if self.storage_info else -1
+        log.info("Sync starting: %d file(s) to flush, free space=%d MB", len(targets), free_mb)
         if targets:
+            log.debug("Sync targets: %s", targets)
             self._sync_proc = subprocess.Popen(
                 ["sync", "--"] + targets,
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
             )
         else:
             mount = self.storage_info["mount_point"] if self.storage_info else "/"
+            log.debug("Sync target (fallback filesystem): %s", mount)
             self._sync_proc = subprocess.Popen(
                 ["sync", "-f", mount],
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
             )
+        self._sync_start_time = time.monotonic()
         self._state = State.SAVING
 
     def _tick_saving(self, btn: dict):
         if self._sync_proc and self._sync_proc.poll() is not None:
-            log.info("Sync complete")
+            rc = self._sync_proc.returncode
+            elapsed = time.monotonic() - self._sync_start_time
+            if rc != 0:
+                stderr_out = self._sync_proc.stderr.read() if self._sync_proc.stderr else b""
+                log.error(
+                    "Sync FAILED rc=%d elapsed=%.1fs stderr=%s",
+                    rc, elapsed,
+                    stderr_out.decode("utf-8", errors="replace").strip(),
+                )
+            else:
+                free_mb = get_free_space_mb(self.storage_info) if self.storage_info else -1
+                log.info("Sync complete rc=%d elapsed=%.1fs free_space=%d MB", rc, elapsed, free_mb)
             self._sync_proc = None
             # Poll the mode switch – it may have been flipped during
             # recording or saving (both are protected states that block
