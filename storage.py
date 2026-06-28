@@ -96,14 +96,31 @@ def mount_storage(info: dict) -> bool:
         log.info("Already mounted: %s on %s", part, mp)
     else:
         if mounted_source:
-            # findmnt found a different device (e.g. parent filesystem) – mount over it
-            log.info("Mount point %s has %s (expected %s), mounting correct device",
-                     mp, mounted_source, part)
-        result = _run(["mount", part, mp])
-        if result.returncode != 0:
-            log.error("Failed to mount %s: %s", part, result.stderr)
-            return False
-        log.info("Mounted %s on %s", part, mp)
+            # Peel off stale USB mounts that may have accumulated from previous
+            # plug/unplug cycles.  Stop when we hit a non-removable bind mount
+            # (e.g. the ProtectSystem=strict root bind on mmcblk) or umount fails.
+            for _ in range(10):
+                if not mounted_source or mounted_source.startswith("/dev/mmcblk"):
+                    break
+                log.info("Unmounting stale %s from %s", mounted_source, mp)
+                r = _run(["umount", mp])
+                if r.returncode != 0:
+                    log.warning("umount %s failed (non-fatal): %s", mp, r.stderr.strip())
+                    break
+                check = _run(["findmnt", "-rn", "-o", "SOURCE", mp])
+                mounted_source = check.stdout.strip() if check.returncode == 0 else ""
+                if mounted_source == part:
+                    log.info("Already mounted after cleanup: %s on %s", part, mp)
+                    break
+            else:
+                log.warning("Gave up peeling stale mounts at %s", mp)
+
+        if mounted_source != part:
+            result = _run(["mount", part, mp])
+            if result.returncode != 0:
+                log.error("Failed to mount %s: %s", part, result.stderr)
+                return False
+            log.info("Mounted %s on %s", part, mp)
 
     # Ensure captures subdirectory
     save_dir = info["save_dir"]
