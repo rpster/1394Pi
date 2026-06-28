@@ -56,10 +56,11 @@ class DvgrabManager:
 
         prefix = os.path.join(self._save_dir, config.DVGRAB_FILE_PREFIX)
 
+        fmt = ["-f", config.DVGRAB_FORMAT] if config.DVGRAB_FORMAT else []
         if camera_controlled:
-            args = [config.DVGRAB_BIN, "--record-start", prefix]
+            args = [config.DVGRAB_BIN] + fmt + ["--record-start", prefix]
         else:
-            args = [config.DVGRAB_BIN, "-i", prefix]
+            args = [config.DVGRAB_BIN] + fmt + ["-i", prefix]
 
         log.info("Starting dvgrab: %s", " ".join(args))
 

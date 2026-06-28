@@ -45,6 +45,7 @@ SAVE_DIR_NAME = "captures"
 # dvgrab
 # ---------------------------------------------------------------------------
 DVGRAB_BIN = "/usr/local/bin/dvgrab"
+DVGRAB_FORMAT = "hdv"               # Output format: "hdv" (MPEG-2 TS) or "raw" (DV)
 FW_DEVICE_PATH = "/dev/fw1"         # FireWire device node; presence = camera connected
 FW_INIT_DELAY = 10                  # Seconds to wait at startup for FireWire subsystem
 FW_BUS_SETTLE_DELAY = 3             # Seconds to wait after /dev/fw1 appears for bus to settle
